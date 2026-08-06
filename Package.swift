@@ -4,26 +4,26 @@
 import PackageDescription
 
 let package = Package(
-    name: "FHKInjections",
+    name: "FLibInjections",
     platforms: [
         .iOS(.v17)
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
-            name: "FHKInjections",
-            targets: ["FHKInjections"]
+            name: "FLibInjections",
+            targets: ["FLibInjections"]
         ),
     ],
     dependencies: [],
     targets: [
         .target(
-            name: "FHKInjections",
+            name: "FLibInjections",
             dependencies: []
         ),
         .testTarget(
-            name: "FHKInjectionsTests",
-            dependencies: ["FHKInjections"]
+            name: "FLibInjectionsTests",
+            dependencies: ["FLibInjections"]
         ),
     ]
 )
