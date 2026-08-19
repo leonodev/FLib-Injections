@@ -19,11 +19,8 @@ let package = Package(
     targets: [
         .target(
             name: "FLibInjections",
-            dependencies: []
-        ),
-        .testTarget(
-            name: "FLibInjectionsTests",
-            dependencies: ["FLibInjections"]
-        ),
+            dependencies: [],
+            path: "Sources/FLibInjections"
+        )
     ]
 )
