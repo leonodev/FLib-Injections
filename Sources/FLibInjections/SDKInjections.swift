@@ -33,8 +33,6 @@ public enum RuntimeEnvironment {
     }
 }
 
-public var inject: DependenciesInjection { .shared }
-
 public final class DependenciesInjection: @unchecked Sendable {
     public static let shared = DependenciesInjection()
     
@@ -86,36 +84,6 @@ public final class DependenciesInjection: @unchecked Sendable {
     
     // MARK: - Registration Methods (unchanged)
     
-    /// CASE 1: Register a dependency, distinguishing between the three possible environments (App, Previews, and Tests). .
-    public func register<T>(
-        _ type: T.Type,
-        live: () -> T,
-        preview: () -> T,
-        testing: () -> T
-    ) {
-        let selectedValue: T
-        switch RuntimeEnvironment.current {
-        case .live: selectedValue = live()
-        case .preview:  selectedValue = preview()
-        case .testing:  selectedValue = testing()
-        }
-        set(selectedValue, for: type)
-    }
-    
-    /// CASO 2: Register a dependency without a UI (use the standard version in the App and Previews, but a mock in unit tests)..
-    public func register<T>(
-        _ type: T.Type,
-        live: () -> T,
-        testing: () -> T
-    ) {
-        let selectedValue: T
-        switch RuntimeEnvironment.current {
-        case .live, .preview: selectedValue = live()
-        case .testing:            selectedValue = testing()
-        }
-        set(selectedValue, for: type)
-    }
-    
     /// CASO 3: Registers a static dependency (uses the exact same actual instance in absolutely all environments).
     public func register<T>(
         _ type: T.Type,
@@ -123,6 +91,28 @@ public final class DependenciesInjection: @unchecked Sendable {
     ) {
         let selectedValue = live()
         set(selectedValue, for: type)
+    }
+    
+    // MARK: - Registro de Mocks (Previews y Unit Tests)
+    public func registerMock<T>(
+        _ type: T.Type,
+        preview: (() -> T)? = nil,
+        testing: (() -> T)? = nil
+    ) {
+#if DEBUG
+        switch RuntimeEnvironment.current {
+        case .preview:
+            if let previewMock = preview {
+                set(previewMock(), for: type)
+            }
+        case .testing:
+            if let testingMock = testing {
+                set(testingMock(), for: type)
+            }
+        case .live:
+            break
+        }
+#endif
     }
     
     // MARK: - Core Methods (Safe Access)
