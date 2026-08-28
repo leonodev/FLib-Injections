@@ -99,20 +99,19 @@ public final class DependenciesInjection: @unchecked Sendable {
         preview: (() -> T)? = nil,
         testing: (() -> T)? = nil
     ) {
-#if DEBUG
+    #if DEBUG
         switch RuntimeEnvironment.current {
         case .preview:
-            if let previewMock = preview {
-                set(previewMock(), for: type)
-            }
+            if let previewMock = preview { set(previewMock(), for: type) }
+            
         case .testing:
-            if let testingMock = testing {
-                set(testingMock(), for: type)
-            }
+            if let testingMock = testing { set(testingMock(), for: type) }
+            
         case .live:
-            break
+            // Si se llama a registerMock desde una Micro-App en el simulador, usa preview
+            if let mock = preview ?? testing { set(mock(), for: type) }
         }
-#endif
+    #endif
     }
     
     // MARK: - Core Methods (Safe Access)
