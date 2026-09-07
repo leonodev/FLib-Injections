@@ -98,6 +98,8 @@ public final class DependenciesInjection: @unchecked Sendable {
         return storage[id] as? T
     }
     
+    // MARK: - 1. Para dependencias AUTOSUFICIENTES (conocen su implementación .live)
+    
     /// Acceso con resolución automática según el entorno (Live, Preview, Testing).
     public func get<T>(
         _ type: T.Type,
@@ -135,6 +137,40 @@ public final class DependenciesInjection: @unchecked Sendable {
     ) -> T {
         get(type, live: live(), preview: live(), testing: live())
     }
+    
+    // MARK: - 2. Para dependencias EXTERNAS (su versión .live se registra fuera, ej: AppDelegate)
+    
+    /// Acceso con fallback para Preview y Testing cuando la implementación .live proviene de la App principal.
+    public func get<T>(
+        _ type: T.Type,
+        preview: @autoclosure () -> T,
+        testing: @autoclosure () -> T
+    ) -> T {
+        if let registeredValue = getOptional(type) {
+            return registeredValue
+        }
+        
+        #if DEBUG
+        switch RuntimeEnvironment.current {
+        case .testing:
+            return testing()
+        case .preview, .live:
+            return preview()
+        }
+        #else
+        fatalError("Dependency missing in Release build: \(type)")
+        #endif
+    }
+    
+    /// Sobrecarga conveniente: Usa preview como fallback general si no se especifica testing.
+    public func get<T>(
+        _ type: T.Type,
+        preview: @autoclosure () -> T
+    ) -> T {
+        get(type, preview: preview(), testing: preview())
+    }
+    
+    // MARK: - 3. Acceso Estricto
     
     /// Acceso estricto tradicional (requiere registro previo explícito).
     public func get<T>(_ type: T.Type) -> T {
