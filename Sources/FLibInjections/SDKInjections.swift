@@ -98,17 +98,10 @@ public final class DependenciesInjection: @unchecked Sendable {
         return storage[id] as? T
     }
     
-    /// Acceso con fallback (usa preview para todo si no se especifica testing)
+    /// Acceso con resolución automática según el entorno (Live, Preview, Testing).
     public func get<T>(
         _ type: T.Type,
-        preview: @autoclosure () -> T
-    ) -> T {
-        get(type, preview: preview(), testing: preview())
-    }
-
-    /// Acceso con fallback diferenciado para Preview y Testing
-    public func get<T>(
-        _ type: T.Type,
+        live: @autoclosure () -> T,
         preview: @autoclosure () -> T,
         testing: @autoclosure () -> T
     ) -> T {
@@ -116,16 +109,31 @@ public final class DependenciesInjection: @unchecked Sendable {
             return registeredValue
         }
         
-        #if DEBUG
         switch RuntimeEnvironment.current {
+        case .live:
+            return live()
+        case .preview:
+            return preview()
         case .testing:
             return testing()
-        case .preview, .live:
-            return preview()
         }
-        #else
-        fatalError("Dependency missing in Release build: \(type)")
-        #endif
+    }
+    
+    /// Sobrecarga conveniente: Si no se especifica testing, usa preview como fallback.
+    public func get<T>(
+        _ type: T.Type,
+        live: @autoclosure () -> T,
+        preview: @autoclosure () -> T
+    ) -> T {
+        get(type, live: live(), preview: preview(), testing: preview())
+    }
+
+    /// Sobrecarga conveniente: Si solo se especifica live, se usa para todos los entornos.
+    public func get<T>(
+        _ type: T.Type,
+        live: @autoclosure () -> T
+    ) -> T {
+        get(type, live: live(), preview: live(), testing: live())
     }
     
     /// Acceso estricto tradicional (requiere registro previo explícito).
