@@ -12,7 +12,7 @@ public enum RuntimeEnvironment {
 #if DEBUG
         let env = ProcessInfo.processInfo.environment
         
-        // Detects test executions (both XCTest and Swift Testing in Xcode))
+        // Detects test executions (both XCTest and Swift Testing in Xcode)
         let isTesting = env["XCTestConfigurationFilePath"] != nil
         || env["XCTestBundlePath"] != nil
         || env["XCTestSessionIdentifier"] != nil
@@ -64,27 +64,15 @@ public final class DependenciesInjection: @unchecked Sendable {
     }
     
     /// Task-local storage containing the active overrides box, if it exists.
-    ///
-    /// `nil` It means there is no active override scope.: `get(_:)`
-    /// consult the gloabl dictionary `storage`. When executed `withOverrides(_:)`,
-    /// A new `OverrideBox` is bound to this task-local for the duration.
-    /// of its operational closure.
-    ///
-    /// As it is task-local (not global) state, the associated value is automatically
-    /// inherited by any child task created within that scope,
-    /// but it is completely invisible to sibling task trees
-    /// running in parallel (for example, parallel tests in Swift Testing).
-    /// This eliminates test races without the need for manual locking
-    /// or snapshotting/restoring shared state.
     @TaskLocal private static var overrideBox: OverrideBox?
     
     private init() {
         storage = [:]
     }
     
-    // MARK: - Registration Methods (unchanged)
+    // MARK: - Registration Methods
     
-    /// CASO 3: Registers a static dependency (uses the exact same actual instance in absolutely all environments).
+    /// Registers a static dependency.
     public func register<T>(
         _ type: T.Type,
         live: () -> T
@@ -93,50 +81,63 @@ public final class DependenciesInjection: @unchecked Sendable {
         set(selectedValue, for: type)
     }
     
-    // MARK: - Registro de Mocks (Previews y Unit Tests)
-    public func registerMock<T>(
-        _ type: T.Type,
-        preview: (() -> T)? = nil,
-        testing: (() -> T)? = nil
-    ) {
-    #if DEBUG
-        switch RuntimeEnvironment.current {
-        case .preview:
-            if let previewMock = preview { set(previewMock(), for: type) }
-            
-        case .testing:
-            if let testingMock = testing { set(testingMock(), for: type) }
-            
-        case .live:
-            // Si se llama a registerMock desde una Micro-App en el simulador, usa preview
-            if let mock = preview ?? testing { set(mock(), for: type) }
-        }
-    #endif
-    }
-    
     // MARK: - Core Methods (Safe Access)
-    public func get<T>(_ type: T.Type) -> T {
+    
+    /// Obtiene un valor de forma opcional sin lanzar fatalError si no existe en el contenedor.
+    public func getOptional<T>(_ type: T.Type) -> T? {
         let id = ObjectIdentifier(type)
         
-        // If there is an active overrides box in THIS task tree, it takes absolute priority..
+        // Prioridad 1: Override box del task actual (Unit Tests asíncronos)
         if let box = Self.overrideBox, let value = box.get(id) as? T {
             return value
         }
         
-        // Otherwise, the usual behavior: global storage..
+        // Prioridad 2: Almacenamiento global
         lock.lock()
         defer { lock.unlock() }
-        guard let value = storage[id] as? T else {
-            fatalError("Dependency missing: \(type)")
+        return storage[id] as? T
+    }
+    
+    /// Acceso principal con resolución de Fallback automático (Previews / Tests / Simulador).
+    public func get<T>(
+        _ type: T.Type,
+        preview: @autoclosure () -> T,
+        testing: (() -> T)? = nil
+    ) -> T {
+        // Si la dependencia ya fue registrada explícitamente (.live u override de test), se usa de inmediato
+        if let registeredValue = getOptional(type) {
+            return registeredValue
         }
-        return value
+        
+#if DEBUG
+        // Si no existe registro explícito, resuelve según el entorno actual de ejecución
+        switch RuntimeEnvironment.current {
+        case .testing:
+            if let testing {
+                return testing()
+            }
+            return preview()
+        case .preview, .live:
+            return preview()
+        }
+#else
+        fatalError("Dependency missing in Release build: \(type)")
+#endif
+    }
+    
+    /// Acceso estricto tradicional (requiere registro previo explícito).
+    public func get<T>(_ type: T.Type) -> T {
+        if let registeredValue = getOptional(type) {
+            return registeredValue
+        }
+        
+        fatalError("Dependency missing: \(type)")
     }
     
     public func set<T>(_ value: T, for type: T.Type) {
         let id = ObjectIdentifier(type)
         
-        // If we are inside a withOverrides block, writes go to the local box,
-        // NEVER to global storage. This is what eliminates race conditions between tests.
+        // Si estamos dentro de un bloque withOverrides, los writes van a la caja local del Task
         if let box = Self.overrideBox {
             box.set(id, value)
             return
@@ -155,9 +156,6 @@ public final class DependenciesInjection: @unchecked Sendable {
     
     // MARK: - Scope temporal (Swift Testing / XCTest async, sin fugas entre tests paralelos)
     
-    /// Creates an isolated scope for the task tree. Everything read or written within
-    /// `body` (including structured child tasks created inside) uses this container.
-    /// Sibling tests running in parallel (Swift Testing) never see it.
     public func withOverrides<R>(
         _ body: () async throws -> R
     ) async rethrows -> R {
@@ -168,7 +166,6 @@ public final class DependenciesInjection: @unchecked Sendable {
     }
     
     /// Access via KeyPath for @propertyWrapper and for mocks in tests.
-    /// Example: inject[\.splashRepository] = mock
     public subscript<T>(keyPath: KeyPath<DependenciesInjection, T>) -> T {
         get { self[keyPath: keyPath] }
         set { set(newValue, for: T.self) }
