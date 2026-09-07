@@ -98,31 +98,34 @@ public final class DependenciesInjection: @unchecked Sendable {
         return storage[id] as? T
     }
     
-    /// Acceso principal con resolución de Fallback automático (Previews / Tests / Simulador).
+    /// Acceso con fallback (usa preview para todo si no se especifica testing)
+    public func get<T>(
+        _ type: T.Type,
+        preview: @autoclosure () -> T
+    ) -> T {
+        get(type, preview: preview(), testing: preview())
+    }
+
+    /// Acceso con fallback diferenciado para Preview y Testing
     public func get<T>(
         _ type: T.Type,
         preview: @autoclosure () -> T,
-        testing: (() -> T)? = nil
+        testing: @autoclosure () -> T
     ) -> T {
-        // Si la dependencia ya fue registrada explícitamente (.live u override de test), se usa de inmediato
         if let registeredValue = getOptional(type) {
             return registeredValue
         }
         
-#if DEBUG
-        // Si no existe registro explícito, resuelve según el entorno actual de ejecución
+        #if DEBUG
         switch RuntimeEnvironment.current {
         case .testing:
-            if let testing {
-                return testing()
-            }
-            return preview()
+            return testing()
         case .preview, .live:
             return preview()
         }
-#else
+        #else
         fatalError("Dependency missing in Release build: \(type)")
-#endif
+        #endif
     }
     
     /// Acceso estricto tradicional (requiere registro previo explícito).
